@@ -225,7 +225,13 @@ namespace DeviceRemount {
         public const int IOCTL_STORAGE_GET_DEVICE_NUMBER = 0x2D1080;
         public const int IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS = 0x00560000;
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        // SetupApi data structures are 1-byte packed on Win32, but 8-byte packed on Win64. :(
+        // See http://www.pinvoke.net/default.aspx/Structures/SP_DEVINFO_DATA.html
+#if W32
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+#elif W64
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+#endif
         public struct SP_DEVINFO_DATA {
             public UInt32 cbSize;
             [MarshalAs(UnmanagedType.Struct)]
@@ -234,7 +240,11 @@ namespace DeviceRemount {
             public IntPtr Reserved;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Ansi)]
+#if W32
+        [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet=CharSet.Ansi)]
+#elif W64
+        [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet=CharSet.Ansi)]
+#endif
         public struct SP_DEVINFO_LIST_DETAIL_DATA {
             public UInt32 cbSize;
             [MarshalAs(UnmanagedType.Struct)]
@@ -244,7 +254,11 @@ namespace DeviceRemount {
             public char[] RemoteMachineName;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+#if W32
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+#elif W64
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+#endif
         public struct SP_DEVICE_INTERFACE_DATA {
             public UInt32 cbSize;
             [MarshalAs(UnmanagedType.Struct)]
@@ -253,20 +267,28 @@ namespace DeviceRemount {
             public UIntPtr Reserved;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        [StructLayout(LayoutKind.Sequential)]
         public class STORAGE_DEVICE_NUMBER {
             public int DeviceType;
             public int DeviceNumber;
             public int PartitionNumber;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+#if W32
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+#elif W64
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+#endif
         public struct SP_CLASSINSTALL_HEADER {
             public UInt32 cbSize;
             public DiClassInstallFunction InstallFunction;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+#if W32
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+#elif W64
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+#endif
         public class SP_PROPCHANGE_PARAMS {
             public SP_CLASSINSTALL_HEADER Header;
             public DiClassInstallState StateChange;
@@ -274,19 +296,23 @@ namespace DeviceRemount {
             public UInt32 HwProfile;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        [StructLayout(LayoutKind.Sequential)]
         public class DISK_EXTENT {
             public UInt32 DiskNumber;
             public Int64 StartingOffset;
             public Int64 ExtentLength;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        [StructLayout(LayoutKind.Sequential)]
         public class VOLUME_DISK_EXTENTS_HEADER {
             public UInt32 NumberOfDiskExtents;
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 4)]
+#if W32
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+#elif W64
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+#endif
         public struct SP_DEVINSTALL_PARAMS {
             public UInt32 cbSize;
             public UInt32 Flags;
@@ -400,7 +426,11 @@ namespace DeviceRemount {
                     //  alignment is different from Win32's on x64 :(
                     var buffer = new byte[1024 + 4];
                     fixed (byte * pBuffer = buffer) {
-                        *(UInt32 *)pBuffer = 8;
+                        // Account for differences in alignment strategy
+                        if (Environment.Is64BitProcess)
+                            *(UInt32 *)pBuffer = 8;
+                        else
+                            *(UInt32 *)pBuffer = (uint)(4 + Marshal.SystemDefaultCharSize);
 
                         SetupDiGetDeviceInterfaceDetail(
                             devs.DangerousGetHandle(), ref deviceInterfaceData,
